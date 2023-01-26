@@ -1,0 +1,236 @@
+import java.io.*;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+
+public class RegExpsys2 {
+    static String[] parts = new String[2];
+    static HashMap<String, Integer> all_field_names = new HashMap<>();
+    static HashMap<String, Integer> all_field_values = new HashMap<>();
+    static int train_setsize = 3834, valid_setsize = 352; //venue
+    //static int train_setsize=4000,valid_setsize=455; //bio
+
+
+
+    public static void main(String[] args) throws FileNotFoundException, UnsupportedEncodingException {
+
+        File inputfile = new File("all-data.txt");
+        try {
+            PrintWriter output = new PrintWriter("allsummary.txt", "UTF-8");
+            PrintWriter output2 = new PrintWriter("allbox.txt", "UTF-8");
+            PrintWriter output3 = new PrintWriter("word_vocab.txt", "UTF-8");
+            PrintWriter output4 = new PrintWriter("field_vocab.txt", "UTF-8");
+            PrintWriter output5 = new PrintWriter("vocab.txt", "UTF-8");
+
+            PrintWriter trainbox = new PrintWriter("train.box", "UTF-8");
+            PrintWriter trainsummary = new PrintWriter("train.summary", "UTF-8");
+            PrintWriter validbox = new PrintWriter("valid.box", "UTF-8");
+            PrintWriter validsummary = new PrintWriter("valid.summary", "UTF-8");
+            PrintWriter testbox = new PrintWriter("test.box", "UTF-8");
+            PrintWriter testsummary = new PrintWriter("test.summary", "UTF-8");
+
+            Scanner input = new Scanner(inputfile);
+            int turn = 0;
+            String predline = new String();
+            String summary;
+
+            while (input.hasNext()) {
+                String text = input.nextLine();
+                if ((turn == 1) && (text.compareTo("") == 0)) {
+                    turn = 0;
+                }
+                if (turn == 1) {
+                    parts = text.split("\t");
+                    output2.println(convert_predicate(predline));
+                    summary = new String();
+                    summary = parts[1].replaceAll("([\\,\\;\\.])", " $1 ");
+                    summary = summary.trim().replaceAll(" +", " ");
+                    parse_summary(summary);
+                    output.println(summary);
+                }
+                if (text.contains("=")) {
+                    turn = 1;
+                    predline = new String();
+                    predline = text;
+                }
+            }
+
+            System.out.println("Toplam alan isim sayisi " + all_field_names.size());
+            System.out.println("Alan isimleri " + sortByValue(all_field_names));
+            for (Map.Entry<String, Integer> ent : sortByValue(all_field_names).entrySet()) {
+                output4.println(ent.getKey() + "\t" + ent.getValue());
+                output5.println(ent.getKey() + "\t" + ent.getValue());
+            }
+
+            System.out.println("Toplam alan degeri sayisi " + all_field_values.size());
+            for (Map.Entry<String, Integer> ent : sortByValue(all_field_values).entrySet()) {
+                output3.println(ent.getKey() + "\t" + ent.getValue());
+                output5.println(ent.getKey() + "\t" + ent.getValue());
+            }
+
+
+            output.close();
+            output2.close();
+            output3.close();
+            output4.close();
+            output5.close();
+
+            Scanner inputbox = new Scanner(new File("allbox.txt"));
+            Scanner inputsummary = new Scanner(new File("allsummary.txt"));
+            int sentence_num=0;
+            while (inputbox.hasNext()) {
+                if(sentence_num<train_setsize){
+                 trainbox.write(inputbox.nextLine()+"\n");
+                 trainsummary.write(inputsummary.nextLine()+"\n");}
+                else if((sentence_num>=train_setsize) && (sentence_num<train_setsize+valid_setsize)){
+                    validbox.write(inputbox.nextLine()+"\n");
+                    validsummary.write(inputsummary.nextLine()+"\n");
+                }
+                else
+                {
+                    testbox.write(inputbox.nextLine()+"\n");
+                    testsummary.write(inputsummary.nextLine()+"\n");
+                }
+            sentence_num++;
+            }
+
+            trainbox.close(); trainsummary.close();
+            validbox.close(); validsummary.close();
+            testbox.close(); testsummary.close();
+            inputbox.close(); inputsummary.close();
+
+        }
+
+        catch(IOException ex){}
+    }
+
+
+    public static String convert_predicate(String text) {
+        String prefix = new String();
+        String suffix=new String();
+        String ret_text="";
+        String[] parts = new String[100];
+        text = text.replaceAll("\",", "\"###");
+        parts = text.split("###");
+        prefix = ""; suffix="";
+        for (int j = 0; j < parts.length; j++) {
+            prefix = prefix + convert_field(parts[j],1);
+            suffix = suffix + convert_field(parts[j],2);
+            if (j != parts.length - 1) {prefix = prefix + "\t";
+            suffix=suffix+"\t";}
+        }
+        ret_text=prefix+"\t"+suffix;
+        return ret_text;
+    }
+
+
+    public static String convert_field(String text, int kind) {
+        String prefix = new String();
+        String field_name = new String();
+        int counter = 1;
+        String[] parts = new String[2];
+        String[] field_values = new String[100];
+        String suffix=new String();
+
+        prefix = "";
+        suffix="";
+        parts = text.split("=");
+        field_name = parts[0].trim();
+        if (!all_field_names.containsKey(field_name))
+            all_field_names.put(field_name, 1);
+        else
+            all_field_names.put(field_name, all_field_names.get(field_name) + 1);
+
+        parts[1] = parts[1].replaceAll("([\\,])", " $1 ");
+        parts[1] = parts[1].trim().replaceAll(" +", " ");
+        field_values = parts[1].substring(1, parts[1].length() - 1).split(" ");
+
+        for (int j = 0; j < field_values.length; j++) {
+            suffix=suffix+field_name;
+            //ret_text = ret_text + field_name + "\t" + field_values[j];
+            prefix = prefix+ field_values[j];
+
+            if (!all_field_values.containsKey(field_values[j]))
+                all_field_values.put(field_values[j], 1);
+            else
+                all_field_values.put(field_values[j], all_field_values.get(field_values[j]) + 1);
+
+            if (j != field_values.length - 1) {
+                prefix = prefix + "\t";
+                suffix = suffix + "\t";
+            }
+        }
+        if(kind==1) return prefix;
+        else return suffix;
+    }
+
+    public static void parse_summary(String text) {
+        String[] parts = new String[1000];
+        parts = text.split(" ");
+        for (int j = 0; j < parts.length; j++) {
+            if (!all_field_values.containsKey(parts[j]))
+                all_field_values.put(parts[j], 1);
+            else
+                all_field_values.put(parts[j], all_field_values.get(parts[j]) + 1);
+        }
+    }
+
+    // function to sort hashmap by values
+    public static HashMap<String, Integer> sortByValue(HashMap<String, Integer> hm) {
+        // Create a list from elements of HashMap
+        List<Map.Entry<String, Integer>> list =
+                new LinkedList<Map.Entry<String, Integer>>(hm.entrySet());
+
+        // Sort the list
+        Collections.sort(list, new Comparator<Map.Entry<String, Integer>>() {
+            public int compare(Map.Entry<String, Integer> o1,
+                               Map.Entry<String, Integer> o2) {
+                return (o2.getValue()).compareTo(o1.getValue());
+            }
+        });
+
+        // put data from sorted list to hashmap
+        HashMap<String, Integer> temp = new LinkedHashMap<String, Integer>();
+        for (Map.Entry<String, Integer> aa : list) {
+            temp.put(aa.getKey(), aa.getValue());
+        }
+        return temp;
+    }
+
+
+  /*  //Uluc'un mekan dosyalari degismeli
+    public static void main(String[] args) throws FileNotFoundException, UnsupportedEncodingException {
+
+        File inputfile = new File("all-data.txt");
+        try {
+            PrintWriter output = new PrintWriter("alldata-corrected.txt", "UTF-8");
+
+            Scanner input = new Scanner(inputfile);
+            int turn =0;
+            while (input.hasNext()) {
+                String text = input.nextLine();
+                if (text.contains("type =")) {
+                   turn=1;
+                   output.write(text+"\n");
+                }
+                else {
+                    if(turn!=1)
+                     output.write(text + "\n");
+                    else{
+                        if (text.compareTo("") == 0)
+                            turn = 0;
+
+                    }
+                }
+
+            }
+
+            output.close();
+
+
+        } catch (IOException ex) {
+        }
+    }*/
+
+}
